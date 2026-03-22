@@ -1,0 +1,443 @@
+extends Node2D
+
+@onready var grid_container: GridContainer = $SudokuBoard/GridContainer
+@onready var timer_label: Label = $TimerLabel
+@onready var difficulty_option: OptionButton = $DifficultyOption
+@onready var mode_option: OptionButton = $ModeOption
+@onready var status_label: Label = $StatusLabel
+@onready var number_grid: GridContainer = $RightPanel/NumberGrid
+@onready var right_panel: VBoxContainer = $RightPanel
+@onready var bgm_player: AudioStreamPlayer = $BGMPlayer
+@onready var sfx_player: AudioStreamPlayer = $SFXPlayer
+@onready var sound_settings_panel: PopupPanel = $SoundSettingsPanel
+
+var game_grid: Array = []
+var solution_grid: Array = []
+var original_puzzle: Array = []
+var selected_cell: Vector2i = Vector2i(-1, -1)
+var is_game_active: bool = false
+var elapsed_time: float = 0.0
+var difficulty: int = 1
+var game_mode: int = 0  # 0=做题, 1=创造
+
+var cell_scene: PackedScene = preload("res://scenes/Cell.tscn")
+var cells: Array = []
+var texture_num_button: Texture2D = preload("res://assets/pics/num_button.png")
+var texture_chose_button: Texture2D = preload("res://assets/pics/chosed_button.png")
+var texture_unchose_button: Texture2D = preload("res://assets/pics/unChosed_button.png")
+
+var bgm_tracks: Array = [
+	preload("res://assets/bgm/happy_xiaoxiaole_bgm_1.mp3"),
+	preload("res://assets/bgm/happy_xiaoxiaole_bgm_2.mp3")
+]
+var sfx_bubble: AudioStream = preload("res://assets/soundEffect/bubble_1.mp3")
+var sfx_book: AudioStream = preload("res://assets/soundEffect/book_turn_the_page_3.mp3")
+var sfx_bell: AudioStream = preload("res://assets/soundEffect/bell.mp3")
+var sfx_failed: AudioStream = preload("res://assets/soundEffect/failed_2.mp3")
+var sfx_magic: AudioStream = preload("res://assets/soundEffect/magic_1.mp3")
+var sfx_success: AudioStream = preload("res://assets/soundEffect/success_1.mp3")
+var sfx_disappear: AudioStream = preload("res://assets/soundEffect/disappear_1.mp3")
+var sfx_warning: AudioStream = preload("res://assets/soundEffect/warning_3.mp3")
+
+func _ready():
+	setup_board_border()
+	initialize_game()
+	setup_difficulty_options()
+	setup_mode_options()
+	setup_number_buttons()
+	setup_audio()
+	new_game()
+
+func setup_audio():
+	bgm_player.finished.connect(_on_bgm_finished)
+	# 设置初始音量
+	bgm_player.volume_db = linear_to_db(0.8)
+	sfx_player.volume_db = linear_to_db(0.8)
+
+func play_sfx(sfx: AudioStream):
+	sfx_player.stream = sfx
+	sfx_player.play()
+
+func _on_bgm_finished():
+	var current_index = bgm_tracks.find(bgm_player.stream)
+	var next_index = (current_index + 1) % bgm_tracks.size()
+	bgm_player.stream = bgm_tracks[next_index]
+	bgm_player.play()
+
+func _on_sound_settings_pressed():
+	var panel = sound_settings_panel
+	var window_size = Vector2(1000, 850)
+	var panel_size = panel.size
+	panel.position = Vector2(
+		(window_size.x - panel_size.x) / 2,
+		(window_size.y - panel_size.y) / 2
+	)
+	panel.popup()
+
+func _on_bgm_volume_changed(value: float):
+	bgm_player.volume_db = -60.0 if value <= 0.0 else linear_to_db(value / 100.0)
+
+func _on_sfx_volume_changed(value: float):
+	sfx_player.volume_db = -60.0 if value <= 0.0 else linear_to_db(value / 100.0)
+
+func _on_close_settings_pressed():
+	sound_settings_panel.hide()
+
+func setup_board_border():
+	var board = $SudokuBoard
+	var board_style = StyleBoxFlat.new()
+	board_style.bg_color = Color(1, 1, 1, 1)
+	board_style.set_corner_radius_all(0)
+	board_style.set_border_width_all(4)
+	board_style.border_color = Color(0.3, 0.3, 0.3, 1)
+	board.add_theme_stylebox_override("panel", board_style)
+
+func _process(delta):
+	if is_game_active:
+		elapsed_time += delta
+		update_timer_display()
+
+func initialize_game():
+	grid_container.columns = 9
+	cells.clear()
+
+	for i in range(81):
+		var cell = cell_scene.instantiate()
+		cell.custom_minimum_size = Vector2(70, 70)
+		var row = i / 9
+		var col = i % 9
+		cell.cell_clicked.connect(_on_cell_clicked.bind(row, col))
+		grid_container.add_child(cell)
+		cell.set_box_style(row, col)
+		cells.append(cell)
+
+func setup_difficulty_options():
+	if difficulty_option.item_count == 0:
+		difficulty_option.add_item("简单", 1)
+		difficulty_option.add_item("中等", 2)
+		difficulty_option.add_item("困难", 3)
+		difficulty_option.add_item("极难", 4)
+	difficulty_option.selected = 0
+
+func setup_mode_options():
+	if mode_option.item_count == 0:
+		mode_option.add_item("做题模式", 0)
+		mode_option.add_item("创造模式", 1)
+	mode_option.selected = 0
+	update_mode_ui()
+
+func setup_number_buttons():
+	var num_style = StyleBoxTexture.new()
+	num_style.texture = texture_num_button
+	var black_color = Color(0, 0, 0)
+	var hover_text_color = Color(0.15, 0.45, 0.85)
+	var pressed_text_color = Color(0.1, 0.3, 0.7)
+	
+	var hover_style = StyleBoxFlat.new()
+	hover_style.bg_color = Color(0.85, 0.9, 1.0, 1)
+	hover_style.set_corner_radius_all(15)
+	hover_style.set_border_width_all(2)
+	hover_style.border_color = Color(0.4, 0.6, 1.0)
+	
+	var pressed_style = StyleBoxFlat.new()
+	pressed_style.bg_color = Color(0.6, 0.7, 0.9, 1)
+	pressed_style.set_corner_radius_all(15)
+	pressed_style.set_border_width_all(2)
+	pressed_style.border_color = Color(0.3, 0.5, 0.85)
+	
+	for i in range(1, 10):
+		var btn_name = "Btn" + str(i)
+		var btn = number_grid.get_node(btn_name)
+		btn.add_theme_stylebox_override("normal", num_style)
+		btn.add_theme_stylebox_override("hover", hover_style)
+		btn.add_theme_stylebox_override("pressed", pressed_style)
+		btn.add_theme_stylebox_override("focus", num_style)
+		btn.add_theme_color_override("font_color", black_color)
+		btn.add_theme_color_override("font_hover_color", hover_text_color)
+		btn.add_theme_color_override("font_pressed_color", pressed_text_color)
+		btn.pressed.connect(_on_number_pressed.bind(i))
+	var clear_btn = right_panel.get_node("BtnClear")
+	clear_btn.pressed.connect(_on_clear_pressed)
+	
+	var normal_style = StyleBoxTexture.new()
+	normal_style.texture = texture_unchose_button
+	var func_hover_style = StyleBoxTexture.new()
+	func_hover_style.texture = texture_chose_button
+	var func_buttons = ["BtnValidate", "BtnSolve", "BtnClearAll", "BtnClear", "NewGameButton", "BtnExport", "BtnImport"]
+	for btn_name in func_buttons:
+		var btn = right_panel.get_node(btn_name)
+		btn.add_theme_stylebox_override("normal", normal_style)
+		btn.add_theme_stylebox_override("hover", func_hover_style)
+		btn.add_theme_stylebox_override("pressed", func_hover_style)
+		btn.add_theme_stylebox_override("focus", func_hover_style)
+		btn.add_theme_color_override("font_color", black_color)
+		btn.add_theme_color_override("font_hover_color", black_color)
+		btn.add_theme_color_override("font_pressed_color", black_color)
+
+func new_game():
+	solution_grid = SudokuGenerator.generate_solution()
+	game_grid = SudokuGenerator.create_puzzle(solution_grid, difficulty)
+	original_puzzle = []
+	for row in game_grid:
+		original_puzzle.append(row.duplicate())
+
+	selected_cell = Vector2i(-1, -1)
+	is_game_active = true
+	elapsed_time = 0.0
+
+	update_grid_display()
+	clear_highlights()
+	status_label.text = "游戏进行中..."
+
+func _on_difficulty_changed(index: int):
+	play_sfx(sfx_book)
+	difficulty = difficulty_option.get_item_id(index)
+	if game_mode == 0:  # 做题模式
+		new_game()
+
+func _on_mode_changed(index: int):
+	play_sfx(sfx_book)
+	game_mode = mode_option.get_item_id(index)
+	if game_mode == 1:  # 创造模式
+		enter_create_mode()
+	else:  # 做题模式
+		new_game()
+	update_mode_ui()
+
+func update_mode_ui():
+	var export_btn = right_panel.get_node("BtnExport")
+	var import_btn = right_panel.get_node("BtnImport")
+	export_btn.visible = (game_mode == 1)
+	import_btn.visible = (game_mode == 1)
+	difficulty_option.visible = (game_mode == 0)
+
+func enter_create_mode():
+	solution_grid = SudokuGenerator.create_empty_grid()
+	game_grid = SudokuGenerator.create_empty_grid()
+	original_puzzle = SudokuGenerator.create_empty_grid()
+	selected_cell = Vector2i(-1, -1)
+	is_game_active = true
+	elapsed_time = 0.0
+	update_grid_display()
+	clear_highlights()
+	status_label.text = "创造模式 - 自由编辑"
+
+func _on_cell_clicked(row: int, col: int):
+	if not is_game_active:
+		return
+
+	if selected_cell != Vector2i(-1, -1):
+		var prev_index = selected_cell.x * 9 + selected_cell.y
+		cells[prev_index].set_selected(false)
+
+	selected_cell = Vector2i(row, col)
+	var index = row * 9 + col
+	cells[index].set_selected(true)
+
+	highlight_related_cells(row, col)
+
+func set_cell_value(value: int):
+	if not is_game_active or selected_cell == Vector2i(-1, -1):
+		return
+
+	var row = selected_cell.x
+	var col = selected_cell.y
+
+	if original_puzzle[row][col] != 0:
+		return
+
+	game_grid[row][col] = value
+	var index = row * 9 + col
+	cells[index].set_cell_value(value, false)
+
+	if SudokuValidator.is_game_complete(game_grid):
+		game_completed()
+
+func highlight_related_cells(row: int, col: int):
+	clear_highlights()
+
+	for c in range(9):
+		var index = row * 9 + c
+		cells[index].set_highlighted_row(true)
+
+	for r in range(9):
+		var index = r * 9 + col
+		cells[index].set_highlighted_col(true)
+
+	var box_row = (row / 3) * 3
+	var box_col = (col / 3) * 3
+	for r in range(box_row, box_row + 3):
+		for c in range(box_col, box_col + 3):
+			var index = r * 9 + c
+			cells[index].set_highlighted_box(true)
+
+	var selected_index = row * 9 + col
+	cells[selected_index].set_selected(true)
+
+func clear_highlights():
+	for cell in cells:
+		cell.clear_highlights()
+
+func update_grid_display():
+	for row in range(9):
+		for col in range(9):
+			var index = row * 9 + col
+			var value = game_grid[row][col]
+			var is_original = original_puzzle[row][col] != 0
+			cells[index].set_cell_value(value, is_original)
+
+func update_timer_display():
+	var minutes = int(elapsed_time) / 60
+	var seconds = int(elapsed_time) % 60
+	timer_label.text = "%02d:%02d" % [minutes, seconds]
+
+func game_completed():
+	is_game_active = false
+	status_label.text = "恭喜完成！用时: " + timer_label.text
+	play_sfx(sfx_success)
+
+func _on_new_game_pressed():
+	play_sfx(sfx_book)
+	new_game()
+
+func _on_clear_pressed():
+	play_sfx(sfx_disappear)
+	set_cell_value(0)
+
+func _on_clear_all_pressed():
+	play_sfx(sfx_warning)
+	for row in range(9):
+		for col in range(9):
+			if original_puzzle[row][col] == 0:
+				game_grid[row][col] = 0
+	update_grid_display()
+	clear_highlights()
+	status_label.text = "已清空所有输入"
+
+func _on_validate_pressed():
+	var error_count = 0
+	for row in range(9):
+		for col in range(9):
+			var index = row * 9 + col
+			var value = game_grid[row][col]
+			var is_valid = SudokuValidator.is_cell_valid(game_grid, row, col, value)
+			cells[index].set_valid(is_valid)
+			if not is_valid:
+				error_count += 1
+	if error_count == 0:
+		status_label.text = "校验通过，全部正确！"
+		play_sfx(sfx_bell)
+	else:
+		status_label.text = "发现 " + str(error_count) + " 处错误"
+		play_sfx(sfx_failed)
+
+func _on_solve_pressed():
+	play_sfx(sfx_magic)
+	if not SudokuValidator.is_grid_valid(game_grid):
+		status_label.text = "当前状态有冲突，无法求解"
+		return
+	var grid_copy = []
+	for row in game_grid:
+		grid_copy.append(row.duplicate())
+	if SudokuGenerator.solve_grid(grid_copy):
+		for row in range(9):
+			for col in range(9):
+				game_grid[row][col] = grid_copy[row][col]
+		update_grid_display()
+		clear_highlights()
+		status_label.text = "求解成功"
+	else:
+		status_label.text = "无解"
+
+func _on_export_pressed():
+	var time = Time.get_datetime_dict_from_system()
+	var filename = "sudoku_%04d%02d%02d_%02d%02d%02d.json" % [
+		time.year, time.month, time.day,
+		time.hour, time.minute, time.second
+	]
+	var desktop = OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
+	DisplayServer.file_dialog_show(
+		"导出数独存档",
+		desktop,
+		filename,
+		false,
+		DisplayServer.FILE_DIALOG_MODE_SAVE_FILE,
+		PackedStringArray(["*.json"]),
+		_on_export_file_selected
+	)
+
+func _on_export_file_selected(status: bool, selected_paths: PackedStringArray, selected_filter_index: int):
+	if not status or selected_paths.is_empty():
+		return
+	var path = selected_paths[0]
+	if not path.ends_with(".json"):
+		path += ".json"
+	var data = {
+		"original": original_puzzle,
+		"progress": game_grid,
+		"solution": solution_grid,
+		"difficulty": difficulty
+	}
+	var json_string = JSON.stringify(data)
+	var file = FileAccess.open(path, FileAccess.WRITE)
+	if file:
+		file.store_string(json_string)
+		file.close()
+		status_label.text = "导出成功"
+
+func _on_import_pressed():
+	var desktop = OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
+	DisplayServer.file_dialog_show(
+		"导入数独存档",
+		desktop,
+		"",
+		false,
+		DisplayServer.FILE_DIALOG_MODE_OPEN_FILE,
+		PackedStringArray(["*.json"]),
+		_on_import_file_selected
+	)
+
+func _on_import_file_selected(status: bool, selected_paths: PackedStringArray, selected_filter_index: int):
+	if not status or selected_paths.is_empty():
+		return
+	var path = selected_paths[0]
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file:
+		var json_string = file.get_as_text()
+		file.close()
+		var json = JSON.new()
+		var error = json.parse(json_string)
+		if error == OK:
+			var data = json.data
+			original_puzzle = []
+			for row in data["original"]:
+				original_puzzle.append(Array(row))
+			game_grid = []
+			for row in data["progress"]:
+				game_grid.append(Array(row))
+			solution_grid = []
+			for row in data["solution"]:
+				solution_grid.append(Array(row))
+			difficulty = int(data["difficulty"])
+			selected_cell = Vector2i(-1, -1)
+			is_game_active = true
+			update_grid_display()
+			clear_highlights()
+			status_label.text = "导入成功"
+
+func _on_number_pressed(num: int):
+	play_sfx(sfx_bubble)
+	set_cell_value(num)
+
+func _input(event):
+	if not is_game_active or selected_cell == Vector2i(-1, -1):
+		return
+
+	if event is InputEventKey and event.pressed:
+		var key_code = event.keycode
+
+		if key_code >= KEY_1 and key_code <= KEY_9:
+			var num = key_code - KEY_0
+			set_cell_value(num)
+		elif key_code == KEY_BACKSPACE or key_code == KEY_DELETE or key_code == KEY_0:
+			set_cell_value(0)

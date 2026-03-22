@@ -1,0 +1,44 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="20260320_shudu"
+run/main_scene="uid://ceptt288vu82m"
+config/features=PackedStringArray("4.6", "Forward Plus")
+config/icon="res://icon.svg"
+
+[audio]
+
+bus/count=3
+bus/1/name="Music"
+bus/1/solo=false
+bus/1/mute=false
+bus/1/bypass_fx=false
+bus/1/send="Master"
+bus/2/name="SFX"
+bus/2/solo=false
+bus/2/mute=false
+bus/2/bypass_fx=false
+bus/2/send="Master"
+
+[display]
+
+window/size/viewport_width=1000
+window/size/viewport_height=850
+window/stretch/mode="canvas_items"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+rendering_device/driver.windows="d3d12"
