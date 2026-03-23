@@ -1,19 +1,14 @@
-[gd_scene load_steps=14 format=3 uid="uid://ceptt288vu82m"]
+[gd_scene format=3 uid="uid://ceptt288vu82m"]
 
 [ext_resource type="Script" uid="uid://cqeo232ocs62v" path="res://scripts/Game.gd" id="1"]
 [ext_resource type="Texture2D" uid="uid://barsxndgpylfo" path="res://assets/pics/sudoku_background.png" id="2"]
-[ext_resource type="AudioStream" path="res://assets/bgm/happy_xiaoxiaole_bgm_1.mp3" id="3"]
-[ext_resource type="AudioStream" path="res://assets/bgm/happy_xiaoxiaole_bgm_2.mp3" id="4"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/bubble_1.mp3" id="5"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/book_turn_the_page_3.mp3" id="6"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/bell.mp3" id="7"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/failed_2.mp3" id="8"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/magic_1.mp3" id="9"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/success_1.mp3" id="10"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/disappear_1.mp3" id="11"]
-[ext_resource type="AudioStream" path="res://assets/soundEffect/warning_3.mp3" id="12"]
+[ext_resource type="AudioStream" uid="uid://bfstsmlqg2cio" path="res://assets/bgm/happy_xiaoxiaole_bgm_1.mp3" id="3"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_1"]
+content_margin_left = 15.0
+content_margin_top = 15.0
+content_margin_right = 15.0
+content_margin_bottom = 15.0
 bg_color = Color(0.95, 0.95, 0.95, 1)
 border_width_left = 2
 border_width_top = 2
@@ -24,10 +19,6 @@ corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-content_margin_left = 15
-content_margin_top = 15
-content_margin_right = 15
-content_margin_bottom = 15
 
 [node name="Game" type="Node2D" unique_id=1269218778]
 script = ExtResource("1")
@@ -36,21 +27,21 @@ script = ExtResource("1")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_right = 1321.3334
-offset_bottom = 991.0
+offset_left = -19.0
+offset_top = -1.0
+offset_right = 1302.3334
+offset_bottom = 990.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 texture = ExtResource("2")
 expand_mode = 3
 
-[node name="BGMPlayer" type="AudioStreamPlayer" parent="."]
-autoplay = true
+[node name="BGMPlayer" type="AudioStreamPlayer" parent="." unique_id=1509008357]
 stream = ExtResource("3")
-bus = "Music"
+autoplay = true
 
-[node name="SFXPlayer" type="AudioStreamPlayer" parent="."]
-bus = "SFX"
+[node name="SFXPlayer" type="AudioStreamPlayer" parent="." unique_id=268369434]
 
 [node name="TitleLabel" type="Label" parent="." unique_id=1740722837]
 offset_left = 54.0
@@ -89,10 +80,10 @@ offset_right = 860.0
 offset_bottom = 120.0
 
 [node name="BtnSoundSettings" type="Button" parent="." unique_id=1234567890]
-offset_left = 900.0
-offset_top = 20.0
-offset_right = 980.0
-offset_bottom = 60.0
+offset_left = 880.0
+offset_top = 81.0
+offset_right = 960.0
+offset_bottom = 121.0
 theme_override_font_sizes/font_size = 20
 text = "音效"
 
@@ -217,65 +208,62 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 22
 text = "导  入"
 
-[node name="SoundSettingsPanel" type="PopupPanel" parent="."]
-size = Vector2(300, 200)
-visible = false
+[node name="SoundSettingsPanel" type="PopupPanel" parent="." unique_id=1367638119]
+size = Vector2i(300, 200)
 theme_override_styles/panel = SubResource("StyleBoxFlat_1")
 
-[node name="VBoxContainer" type="VBoxContainer" parent="SoundSettingsPanel"]
+[node name="VBoxContainer" type="VBoxContainer" parent="SoundSettingsPanel" unique_id=12394425]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_left = 15.0
+offset_top = 15.0
+offset_right = 285.0
+offset_bottom = 185.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_constants/separation = 10
 
-[node name="BGMLabel" type="Label" parent="SoundSettingsPanel/VBoxContainer"]
+[node name="BGMLabel" type="Label" parent="SoundSettingsPanel/VBoxContainer" unique_id=1039934959]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
 theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 18
 text = "BGM 音量"
 
-[node name="BGMSlider" type="HSlider" parent="SoundSettingsPanel/VBoxContainer"]
-layout_mode = 2
+[node name="BGMSlider" type="HSlider" parent="SoundSettingsPanel/VBoxContainer" unique_id=268674591]
 custom_minimum_size = Vector2(0, 30)
-min_value = 0.0
-max_value = 100.0
-value = 80.0
-tick_count = 0
-
-[node name="SFXLabel" type="Label" parent="SoundSettingsPanel/VBoxContainer"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+value = 80.0
+
+[node name="SFXLabel" type="Label" parent="SoundSettingsPanel/VBoxContainer" unique_id=1230214997]
+layout_mode = 2
 theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_font_sizes/font_size = 18
 text = "音效音量"
 
-[node name="SFXSlider" type="HSlider" parent="SoundSettingsPanel/VBoxContainer"]
-layout_mode = 2
+[node name="SFXSlider" type="HSlider" parent="SoundSettingsPanel/VBoxContainer" unique_id=1878265671]
 custom_minimum_size = Vector2(0, 30)
-min_value = 0.0
-max_value = 100.0
-value = 80.0
-tick_count = 0
-
-[node name="CloseButton" type="Button" parent="SoundSettingsPanel/VBoxContainer"]
 layout_mode = 2
+value = 80.0
+
+[node name="CloseButton" type="Button" parent="SoundSettingsPanel/VBoxContainer" unique_id=1806608781]
 custom_minimum_size = Vector2(0, 40)
-theme_override_font_sizes/font_size = 18
+layout_mode = 2
 theme_override_colors/font_color = Color(0, 0, 0, 1)
-theme_override_colors/font_hover_color = Color(0.2, 0.2, 0.2, 1)
 theme_override_colors/font_pressed_color = Color(0.1, 0.1, 0.1, 1)
+theme_override_colors/font_hover_color = Color(0.2, 0.2, 0.2, 1)
+theme_override_font_sizes/font_size = 18
 text = "关  闭"
 
 [connection signal="item_selected" from="DifficultyOption" to="." method="_on_difficulty_changed"]
 [connection signal="item_selected" from="ModeOption" to="." method="_on_mode_changed"]
+[connection signal="pressed" from="BtnSoundSettings" to="." method="_on_sound_settings_pressed"]
 [connection signal="pressed" from="RightPanel/BtnValidate" to="." method="_on_validate_pressed"]
 [connection signal="pressed" from="RightPanel/BtnSolve" to="." method="_on_solve_pressed"]
 [connection signal="pressed" from="RightPanel/BtnClearAll" to="." method="_on_clear_all_pressed"]
 [connection signal="pressed" from="RightPanel/NewGameButton" to="." method="_on_new_game_pressed"]
 [connection signal="pressed" from="RightPanel/BtnExport" to="." method="_on_export_pressed"]
 [connection signal="pressed" from="RightPanel/BtnImport" to="." method="_on_import_pressed"]
-[connection signal="pressed" from="BtnSoundSettings" to="." method="_on_sound_settings_pressed"]
 [connection signal="value_changed" from="SoundSettingsPanel/VBoxContainer/BGMSlider" to="." method="_on_bgm_volume_changed"]
 [connection signal="value_changed" from="SoundSettingsPanel/VBoxContainer/SFXSlider" to="." method="_on_sfx_volume_changed"]
 [connection signal="pressed" from="SoundSettingsPanel/VBoxContainer/CloseButton" to="." method="_on_close_settings_pressed"]
