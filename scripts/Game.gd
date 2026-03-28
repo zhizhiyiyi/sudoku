@@ -38,6 +38,8 @@ var sfx_magic: AudioStream = preload("res://assets/soundEffect/magic_1.mp3")
 var sfx_success: AudioStream = preload("res://assets/soundEffect/success_1.mp3")
 var sfx_disappear: AudioStream = preload("res://assets/soundEffect/disappear_1.mp3")
 var sfx_warning: AudioStream = preload("res://assets/soundEffect/warning_3.mp3")
+var sfx_warning2: AudioStream = preload("res://assets/soundEffect/warning_2.mp3")
+var sfx_pencil: AudioStream = preload("res://assets/soundEffect/pencil_write.mp3")
 
 func _ready():
 	setup_board_border()
@@ -156,6 +158,7 @@ func setup_number_buttons():
 		btn.add_theme_color_override("font_hover_color", hover_text_color)
 		btn.add_theme_color_override("font_pressed_color", pressed_text_color)
 		btn.pressed.connect(_on_number_pressed.bind(i))
+		btn.gui_input.connect(_on_number_button_input.bind(i))
 	var clear_btn = right_panel.get_node("BtnClear")
 	clear_btn.pressed.connect(_on_clear_pressed)
 	
@@ -250,8 +253,25 @@ func set_cell_value(value: int):
 	var index = row * 9 + col
 	cells[index].set_cell_value(value, false)
 
+	if value != 0:
+		clear_related_drafts(row, col, value)
+
 	if SudokuValidator.is_game_complete(game_grid):
 		game_completed()
+
+func clear_related_drafts(row: int, col: int, value: int):
+	for c in range(9):
+		if c != col:
+			cells[row * 9 + c].remove_draft(value)
+	for r in range(9):
+		if r != row:
+			cells[r * 9 + col].remove_draft(value)
+	var box_row = (row / 3) * 3
+	var box_col = (col / 3) * 3
+	for r in range(box_row, box_row + 3):
+		for c in range(box_col, box_col + 3):
+			if r != row or c != col:
+				cells[r * 9 + c].remove_draft(value)
 
 func highlight_related_cells(row: int, col: int):
 	clear_highlights()
@@ -302,14 +322,30 @@ func _on_new_game_pressed():
 
 func _on_clear_pressed():
 	play_sfx(sfx_disappear)
+	if selected_cell != Vector2i(-1, -1):
+		var row = selected_cell.x
+		var col = selected_cell.y
+		if original_puzzle[row][col] == 0:
+			var index = row * 9 + col
+			cells[index].clear_drafts()
 	set_cell_value(0)
 
 func _on_clear_all_pressed():
-	play_sfx(sfx_warning)
+	play_sfx(sfx_warning2)
+	var dialog = ConfirmationDialog.new()
+	dialog.title = "确认清空"
+	dialog.dialog_text = "确定要清空所有输入吗？"
+	add_child(dialog)
+	dialog.confirmed.connect(_confirm_clear_all)
+	dialog.popup_centered()
+
+func _confirm_clear_all():
 	for row in range(9):
 		for col in range(9):
 			if original_puzzle[row][col] == 0:
 				game_grid[row][col] = 0
+				var index = row * 9 + col
+				cells[index].clear_drafts()
 	update_grid_display()
 	clear_highlights()
 	status_label.text = "已清空所有输入"
@@ -372,11 +408,15 @@ func _on_export_file_selected(status: bool, selected_paths: PackedStringArray, s
 	var path = selected_paths[0]
 	if not path.ends_with(".json"):
 		path += ".json"
+	var drafts = []
+	for i in range(81):
+		drafts.append(cells[i].draft_numbers.duplicate())
 	var data = {
 		"original": original_puzzle,
 		"progress": game_grid,
 		"solution": solution_grid,
-		"difficulty": difficulty
+		"difficulty": difficulty,
+		"drafts": drafts
 	}
 	var json_string = JSON.stringify(data)
 	var file = FileAccess.open(path, FileAccess.WRITE)
@@ -423,11 +463,34 @@ func _on_import_file_selected(status: bool, selected_paths: PackedStringArray, s
 			is_game_active = true
 			update_grid_display()
 			clear_highlights()
+			if data.has("drafts"):
+				var drafts = data["drafts"]
+				for i in range(81):
+					cells[i].draft_numbers = Array(drafts[i])
+					cells[i].update_display()
 			status_label.text = "导入成功"
 
 func _on_number_pressed(num: int):
 	play_sfx(sfx_bubble)
 	set_cell_value(num)
+
+func _on_number_secondary_pressed(num: int):
+	if selected_cell == Vector2i(-1, -1):
+		return
+	play_sfx(sfx_pencil)
+	add_draft_number(num)
+
+func add_draft_number(num: int):
+	var row = selected_cell.x
+	var col = selected_cell.y
+	if original_puzzle[row][col] != 0:
+		return
+	var index = row * 9 + col
+	cells[index].add_draft(num)
+
+func _on_number_button_input(event: InputEvent, num: int):
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_on_number_secondary_pressed(num)
 
 func _input(event):
 	if not is_game_active or selected_cell == Vector2i(-1, -1):
