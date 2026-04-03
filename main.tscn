@@ -67,6 +67,14 @@ offset_bottom = 120.0
 theme_override_font_sizes/font_size = 22
 text = "游戏进行中..."
 
+[node name="InputModeLabel" type="Label" parent="." unique_id=192837465]
+offset_left = 260.0
+offset_top = 120.0
+offset_right = 500.0
+offset_bottom = 147.0
+theme_override_font_sizes/font_size = 16
+text = "输入模式：填数（Tab）"
+
 [node name="DifficultyOption" type="OptionButton" parent="." unique_id=345553669]
 offset_left = 520.0
 offset_top = 82.0

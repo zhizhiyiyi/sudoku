@@ -5,6 +5,7 @@ extends Node2D
 @onready var difficulty_option: OptionButton = $DifficultyOption
 @onready var mode_option: OptionButton = $ModeOption
 @onready var status_label: Label = $StatusLabel
+@onready var input_mode_label: Label = $InputModeLabel
 @onready var number_grid: GridContainer = $RightPanel/NumberGrid
 @onready var right_panel: VBoxContainer = $RightPanel
 @onready var bgm_player: AudioStreamPlayer = $BGMPlayer
@@ -24,6 +25,11 @@ var remaining_time: float = 0.0
 var time_limit: float = 0.0
 var last_counting_second: int = -1
 var last_minute_mark: int = -1
+var is_draft_input_mode: bool = false
+var instant_conflict_check: bool = true
+var undo_stack: Array = []
+var redo_stack: Array = []
+var max_history_steps: int = 200
 
 var cell_scene: PackedScene = preload("res://scenes/Cell.tscn")
 var cells: Array = []
@@ -101,6 +107,126 @@ func setup_board_border():
 	board_style.set_border_width_all(4)
 	board_style.border_color = Color(0.3, 0.3, 0.3, 1)
 	board.add_theme_stylebox_override("panel", board_style)
+
+func reset_history():
+	undo_stack.clear()
+	redo_stack.clear()
+
+func _duplicate_grid(grid: Array) -> Array:
+	var copy = []
+	for row in grid:
+		copy.append(row.duplicate())
+	return copy
+
+func _capture_state() -> Dictionary:
+	var drafts = []
+	for i in range(81):
+		drafts.append(cells[i].draft_numbers.duplicate())
+	return {
+		"game_grid": _duplicate_grid(game_grid),
+		"drafts": drafts,
+		"selected_cell": selected_cell,
+		"is_game_active": is_game_active,
+		"elapsed_time": elapsed_time,
+		"remaining_time": remaining_time,
+		"status_text": status_label.text
+	}
+
+func _restore_state(state: Dictionary):
+	game_grid = _duplicate_grid(state["game_grid"])
+	for i in range(81):
+		cells[i].draft_numbers = Array(state["drafts"][i])
+	update_grid_display()
+	for i in range(81):
+		cells[i].update_display()
+
+	selected_cell = state["selected_cell"]
+	if selected_cell != Vector2i(-1, -1):
+		highlight_related_cells(selected_cell.x, selected_cell.y)
+	else:
+		clear_highlights()
+
+	is_game_active = state["is_game_active"]
+	elapsed_time = state["elapsed_time"]
+	remaining_time = state["remaining_time"]
+	status_label.text = state["status_text"]
+	if instant_conflict_check:
+		refresh_conflict_marks()
+
+func push_undo_snapshot():
+	undo_stack.append(_capture_state())
+	if undo_stack.size() > max_history_steps:
+		undo_stack.pop_front()
+	redo_stack.clear()
+
+func undo_action():
+	if undo_stack.is_empty():
+		return
+	var current_state = _capture_state()
+	var previous_state = undo_stack.pop_back()
+	redo_stack.append(current_state)
+	_restore_state(previous_state)
+	status_label.text = "已撤销"
+
+func redo_action():
+	if redo_stack.is_empty():
+		return
+	var current_state = _capture_state()
+	var next_state = redo_stack.pop_back()
+	undo_stack.append(current_state)
+	_restore_state(next_state)
+	status_label.text = "已重做"
+
+func refresh_conflict_marks():
+	for row in range(9):
+		for col in range(9):
+			var index = row * 9 + col
+			var value = game_grid[row][col]
+			if value == 0:
+				cells[index].set_valid(true)
+			else:
+				cells[index].set_valid(SudokuValidator.is_cell_valid(game_grid, row, col, value))
+
+func clear_conflict_marks():
+	for cell in cells:
+		cell.set_valid(true)
+
+func toggle_input_mode():
+	is_draft_input_mode = not is_draft_input_mode
+	update_input_mode_label()
+
+func update_input_mode_label():
+	input_mode_label.text = "输入模式：候选（Tab）" if is_draft_input_mode else "输入模式：填数（Tab）"
+
+func toggle_conflict_check():
+	instant_conflict_check = not instant_conflict_check
+	if instant_conflict_check:
+		refresh_conflict_marks()
+		status_label.text = "即时冲突检测：开启"
+	else:
+		clear_conflict_marks()
+		status_label.text = "即时冲突检测：关闭"
+
+func select_cell(row: int, col: int):
+	if selected_cell != Vector2i(-1, -1):
+		var prev_index = selected_cell.x * 9 + selected_cell.y
+		cells[prev_index].set_selected(false)
+
+	selected_cell = Vector2i(clamp(row, 0, 8), clamp(col, 0, 8))
+	highlight_related_cells(selected_cell.x, selected_cell.y)
+
+func move_selection(row_delta: int, col_delta: int):
+	if selected_cell == Vector2i(-1, -1):
+		select_cell(0, 0)
+		return
+	select_cell(selected_cell.x + row_delta, selected_cell.y + col_delta)
+
+func _key_to_number(key_code: Key) -> int:
+	if key_code >= KEY_1 and key_code <= KEY_9:
+		return key_code - KEY_0
+	if key_code >= KEY_KP_1 and key_code <= KEY_KP_9:
+		return key_code - KEY_KP_0
+	return -1
 
 func _process(delta):
 	if is_game_active:
@@ -204,6 +330,9 @@ func new_game():
 	selected_cell = Vector2i(-1, -1)
 	is_game_active = true
 	elapsed_time = 0.0
+	is_draft_input_mode = false
+	update_input_mode_label()
+	reset_history()
 	is_timed_mode = (game_mode == 1)
 	if is_timed_mode:
 		remaining_time = get_time_limit(difficulty)
@@ -213,6 +342,8 @@ func new_game():
 
 	update_grid_display()
 	clear_highlights()
+	if instant_conflict_check:
+		refresh_conflict_marks()
 	status_label.text = "游戏进行中..."
 
 func get_time_limit(diff: int) -> float:
@@ -252,6 +383,9 @@ func enter_create_mode():
 	selected_cell = Vector2i(-1, -1)
 	is_game_active = true
 	elapsed_time = 0.0
+	is_draft_input_mode = false
+	update_input_mode_label()
+	reset_history()
 	is_timed_mode = false
 	update_grid_display()
 	clear_highlights()
@@ -260,18 +394,9 @@ func enter_create_mode():
 func _on_cell_clicked(row: int, col: int):
 	if not is_game_active:
 		return
+	select_cell(row, col)
 
-	if selected_cell != Vector2i(-1, -1):
-		var prev_index = selected_cell.x * 9 + selected_cell.y
-		cells[prev_index].set_selected(false)
-
-	selected_cell = Vector2i(row, col)
-	var index = row * 9 + col
-	cells[index].set_selected(true)
-
-	highlight_related_cells(row, col)
-
-func set_cell_value(value: int):
+func set_cell_value(value: int, record_undo: bool = true):
 	if not is_game_active or selected_cell == Vector2i(-1, -1):
 		return
 
@@ -281,12 +406,18 @@ func set_cell_value(value: int):
 	if original_puzzle[row][col] != 0:
 		return
 
+	if record_undo:
+		push_undo_snapshot()
+
 	game_grid[row][col] = value
 	var index = row * 9 + col
 	cells[index].set_cell_value(value, false)
 
 	if value != 0:
 		clear_related_drafts(row, col, value)
+
+	if instant_conflict_check:
+		refresh_conflict_marks()
 
 	if SudokuValidator.is_game_complete(game_grid):
 		game_completed()
@@ -350,7 +481,7 @@ func update_timer_display():
 
 func handle_timed_mode_sfx():
 	var current_second = int(remaining_time)
-	
+
 	# 最后3秒播放倒计时音效
 	if current_second <= 3 and current_second > 0 and current_second != last_counting_second:
 		play_sfx(sfx_counting)
@@ -399,9 +530,10 @@ func _on_clear_pressed():
 		var row = selected_cell.x
 		var col = selected_cell.y
 		if original_puzzle[row][col] == 0:
+			push_undo_snapshot()
 			var index = row * 9 + col
 			cells[index].clear_drafts()
-	set_cell_value(0)
+	set_cell_value(0, false)
 
 func _on_clear_all_pressed():
 	play_sfx(sfx_warning2)
@@ -532,6 +664,8 @@ func _on_import_file_selected(status: bool, selected_paths: PackedStringArray, s
 			for row in data["solution"]:
 				solution_grid.append(Array(row))
 			difficulty = int(data["difficulty"])
+			is_draft_input_mode = false
+			update_input_mode_label()
 			selected_cell = Vector2i(-1, -1)
 			is_game_active = true
 			update_grid_display()
@@ -544,8 +678,12 @@ func _on_import_file_selected(status: bool, selected_paths: PackedStringArray, s
 			status_label.text = "导入成功"
 
 func _on_number_pressed(num: int):
-	play_sfx(sfx_bubble)
-	set_cell_value(num)
+	if is_draft_input_mode:
+		play_sfx(sfx_pencil)
+		add_draft_number(num)
+	else:
+		play_sfx(sfx_bubble)
+		set_cell_value(num)
 
 func _on_number_secondary_pressed(num: int):
 	if selected_cell == Vector2i(-1, -1):
@@ -554,10 +692,13 @@ func _on_number_secondary_pressed(num: int):
 	add_draft_number(num)
 
 func add_draft_number(num: int):
+	if selected_cell == Vector2i(-1, -1):
+		return
 	var row = selected_cell.x
 	var col = selected_cell.y
 	if original_puzzle[row][col] != 0:
 		return
+	push_undo_snapshot()
 	var index = row * 9 + col
 	cells[index].add_draft(num)
 
@@ -566,14 +707,45 @@ func _on_number_button_input(event: InputEvent, num: int):
 		_on_number_secondary_pressed(num)
 
 func _input(event):
-	if not is_game_active or selected_cell == Vector2i(-1, -1):
+	if not is_game_active:
 		return
 
 	if event is InputEventKey and event.pressed:
 		var key_code = event.keycode
 
-		if key_code >= KEY_1 and key_code <= KEY_9:
-			var num = key_code - KEY_0
-			set_cell_value(num)
-		elif key_code == KEY_BACKSPACE or key_code == KEY_DELETE or key_code == KEY_0:
+		if key_code == KEY_UP:
+			move_selection(-1, 0)
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_DOWN:
+			move_selection(1, 0)
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_LEFT:
+			move_selection(0, -1)
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_RIGHT:
+			move_selection(0, 1)
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_TAB:
+			toggle_input_mode()
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_Z and event.ctrl_pressed:
+			undo_action()
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_Y and event.ctrl_pressed:
+			redo_action()
+			get_viewport().set_input_as_handled()
+		elif key_code == KEY_BACKSPACE or key_code == KEY_DELETE or key_code == KEY_0 or key_code == KEY_KP_0:
+			play_sfx(sfx_disappear)
 			set_cell_value(0)
+			get_viewport().set_input_as_handled()
+		else:
+			var num = _key_to_number(key_code)
+			if num == -1:
+				return
+			if is_draft_input_mode:
+				play_sfx(sfx_pencil)
+				add_draft_number(num)
+			else:
+				play_sfx(sfx_bubble)
+				set_cell_value(num)
+			get_viewport().set_input_as_handled()
