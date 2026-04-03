@@ -18,7 +18,12 @@ var selected_cell: Vector2i = Vector2i(-1, -1)
 var is_game_active: bool = false
 var elapsed_time: float = 0.0
 var difficulty: int = 1
-var game_mode: int = 0  # 0=做题, 1=创造
+var game_mode: int = 0  # 0=休闲, 1=限时, 2=创造
+var is_timed_mode: bool = false
+var remaining_time: float = 0.0
+var time_limit: float = 0.0
+var last_counting_second: int = -1
+var last_minute_mark: int = -1
 
 var cell_scene: PackedScene = preload("res://scenes/Cell.tscn")
 var cells: Array = []
@@ -40,6 +45,9 @@ var sfx_disappear: AudioStream = preload("res://assets/soundEffect/disappear_1.m
 var sfx_warning: AudioStream = preload("res://assets/soundEffect/warning_3.mp3")
 var sfx_warning2: AudioStream = preload("res://assets/soundEffect/warning_2.mp3")
 var sfx_pencil: AudioStream = preload("res://assets/soundEffect/pencil_write.mp3")
+var sfx_counting: AudioStream = preload("res://assets/soundEffect/counting_1.mp3")
+var sfx_failed_1: AudioStream = preload("res://assets/soundEffect/failed_1.mp3")
+var sfx_notice: AudioStream = preload("res://assets/soundEffect/notice_5.mp3")
 
 func _ready():
 	setup_board_border()
@@ -96,7 +104,15 @@ func setup_board_border():
 
 func _process(delta):
 	if is_game_active:
-		elapsed_time += delta
+		if is_timed_mode:
+			remaining_time -= delta
+			if remaining_time <= 0:
+				remaining_time = 0
+				game_timeout()
+			else:
+				handle_timed_mode_sfx()
+		else:
+			elapsed_time += delta
 		update_timer_display()
 
 func initialize_game():
@@ -123,8 +139,9 @@ func setup_difficulty_options():
 
 func setup_mode_options():
 	if mode_option.item_count == 0:
-		mode_option.add_item("做题模式", 0)
-		mode_option.add_item("创造模式", 1)
+		mode_option.add_item("休闲模式", 0)
+		mode_option.add_item("限时模式", 1)
+		mode_option.add_item("创造模式", 2)
 	mode_option.selected = 0
 	update_mode_ui()
 
@@ -187,32 +204,46 @@ func new_game():
 	selected_cell = Vector2i(-1, -1)
 	is_game_active = true
 	elapsed_time = 0.0
+	is_timed_mode = (game_mode == 1)
+	if is_timed_mode:
+		remaining_time = get_time_limit(difficulty)
+		time_limit = remaining_time
+		last_counting_second = -1
+		last_minute_mark = -1
 
 	update_grid_display()
 	clear_highlights()
 	status_label.text = "游戏进行中..."
 
+func get_time_limit(diff: int) -> float:
+	match diff:
+		1: return 5 * 60  # 简单 5分钟
+		2: return 8 * 60  # 中等 8分钟
+		3: return 12 * 60 # 困难 12分钟
+		4: return 18 * 60 # 极难 18分钟
+		_: return 5 * 60
+
 func _on_difficulty_changed(index: int):
 	play_sfx(sfx_book)
 	difficulty = difficulty_option.get_item_id(index)
-	if game_mode == 0:  # 做题模式
+	if game_mode == 0 or game_mode == 1:  # 休闲模式或限时模式
 		new_game()
 
 func _on_mode_changed(index: int):
 	play_sfx(sfx_book)
 	game_mode = mode_option.get_item_id(index)
-	if game_mode == 1:  # 创造模式
+	if game_mode == 2:  # 创造模式
 		enter_create_mode()
-	else:  # 做题模式
+	else:  # 休闲模式或限时模式
 		new_game()
 	update_mode_ui()
 
 func update_mode_ui():
 	var export_btn = right_panel.get_node("BtnExport")
 	var import_btn = right_panel.get_node("BtnImport")
-	export_btn.visible = (game_mode == 1)
-	import_btn.visible = (game_mode == 1)
-	difficulty_option.visible = (game_mode == 0)
+	export_btn.visible = (game_mode == 2)
+	import_btn.visible = (game_mode == 2)
+	difficulty_option.visible = (game_mode == 0 or game_mode == 1)
 
 func enter_create_mode():
 	solution_grid = SudokuGenerator.create_empty_grid()
@@ -221,6 +252,7 @@ func enter_create_mode():
 	selected_cell = Vector2i(-1, -1)
 	is_game_active = true
 	elapsed_time = 0.0
+	is_timed_mode = false
 	update_grid_display()
 	clear_highlights()
 	status_label.text = "创造模式 - 自由编辑"
@@ -307,14 +339,55 @@ func update_grid_display():
 			cells[index].set_cell_value(value, is_original)
 
 func update_timer_display():
-	var minutes = int(elapsed_time) / 60
-	var seconds = int(elapsed_time) % 60
+	var time_to_show = remaining_time if is_timed_mode else elapsed_time
+	var minutes = int(time_to_show) / 60
+	var seconds = int(time_to_show) % 60
 	timer_label.text = "%02d:%02d" % [minutes, seconds]
+	if is_timed_mode and remaining_time <= 60:
+		timer_label.add_theme_color_override("font_color", Color(1.0, 0.3, 0.3))
+	else:
+		timer_label.add_theme_color_override("font_color", Color(1, 1, 1))
+
+func handle_timed_mode_sfx():
+	var current_second = int(remaining_time)
+	
+	# 最后3秒播放倒计时音效
+	if current_second <= 3 and current_second > 0 and current_second != last_counting_second:
+		play_sfx(sfx_counting)
+		last_counting_second = current_second
+	
+	# 整数分钟播放提示音（不包括起始和结束时）
+	var current_minute = current_second / 60
+	if current_minute != last_minute_mark and current_minute >= 1:
+		if current_minute * 60 == current_second:
+			play_sfx(sfx_notice)
+			last_minute_mark = current_minute
 
 func game_completed():
 	is_game_active = false
-	status_label.text = "恭喜完成！用时: " + timer_label.text
+	if is_timed_mode:
+		var time_used = time_limit - remaining_time
+		var minutes = int(time_used) / 60
+		var seconds = int(time_used) % 60
+		status_label.text = "恭喜完成！用时: %02d:%02d" % [minutes, seconds]
+	else:
+		status_label.text = "恭喜完成！用时: " + timer_label.text
 	play_sfx(sfx_success)
+
+func game_timeout():
+	is_game_active = false
+	status_label.text = "时间到！挑战失败"
+	play_sfx(sfx_failed_1)
+	var dialog = ConfirmationDialog.new()
+	dialog.title = "挑战失败"
+	dialog.dialog_text = "时间到！你没有在规定时间内完成数独。"
+	dialog.ok_button_text = "重新挑战"
+	add_child(dialog)
+	dialog.confirmed.connect(_on_timeout_retry)
+	dialog.popup_centered()
+
+func _on_timeout_retry():
+	new_game()
 
 func _on_new_game_pressed():
 	play_sfx(sfx_book)

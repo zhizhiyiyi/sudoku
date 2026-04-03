@@ -10,7 +10,7 @@ config_version=5
 
 [application]
 
-config/name="20260320_shudu"
+config/name="sudoku_v1.1"
 run/main_scene="uid://ceptt288vu82m"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
